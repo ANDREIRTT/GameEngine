@@ -1,4 +1,4 @@
-package com.mal.component.opengl.core.shape.rectangle
+package com.mal.game_engine.engine.opengl.shape.rectangle
 
 import android.content.Context
 import android.opengl.GLES30

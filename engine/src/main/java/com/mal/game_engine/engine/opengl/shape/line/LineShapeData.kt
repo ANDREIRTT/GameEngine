@@ -1,4 +1,4 @@
-package com.mal.component.opengl.core.shape.line
+package com.mal.game_engine.engine.opengl.shape.line
 
 import com.mal.game_engine.engine.coordinate.Coordinate
 

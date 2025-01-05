@@ -1,4 +1,4 @@
-package com.mal.component.opengl.core.texture
+package com.mal.game_engine.engine.opengl.texture
 
 import android.content.Context
 import android.graphics.BitmapFactory
@@ -7,8 +7,8 @@ import android.opengl.GLUtils
 import androidx.annotation.DrawableRes
 import androidx.core.content.ContextCompat.getDrawable
 import androidx.core.graphics.drawable.toBitmap
-import com.mal.component.opengl.core.texture.param.TextureMode
-import com.mal.component.opengl.core.texture.param.TextureSize
+import com.mal.game_engine.engine.opengl.texture.param.TextureMode
+import com.mal.game_engine.engine.opengl.texture.param.TextureSize
 
 class DrawableTexture(
     private val context: Context,

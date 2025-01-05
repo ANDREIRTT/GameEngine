@@ -1,6 +1,6 @@
-package com.mal.component.opengl.core.shape.circle
+package com.mal.game_engine.engine.opengl.shape.circle
 
-import com.mal.component.opengl.core.texture.param.TextureData
+import com.mal.game_engine.engine.opengl.texture.param.TextureData
 import com.mal.game_engine.engine.coordinate.Coordinate
 
 data class CircleShapeData(

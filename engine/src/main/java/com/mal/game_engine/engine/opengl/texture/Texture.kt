@@ -1,9 +1,9 @@
-package com.mal.component.opengl.core.texture
+package com.mal.game_engine.engine.opengl.texture
 
 import android.content.res.Resources
 import android.opengl.GLES30
-import com.mal.component.opengl.core.texture.param.TextureMode
-import com.mal.component.opengl.core.texture.param.TextureTransformation
+import com.mal.game_engine.engine.opengl.texture.param.TextureMode
+import com.mal.game_engine.engine.opengl.texture.param.TextureTransformation
 import com.mal.game_engine.engine.opengl.checkGL30
 import com.mal.game_engine.engine.opengl.toGLBuffer
 import java.lang.Math.toRadians

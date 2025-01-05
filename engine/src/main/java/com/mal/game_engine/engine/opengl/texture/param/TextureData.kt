@@ -1,6 +1,6 @@
-package com.mal.component.opengl.core.texture.param
+package com.mal.game_engine.engine.opengl.texture.param
 
-import com.mal.component.opengl.core.texture.Texture
+import com.mal.game_engine.engine.opengl.texture.Texture
 
 data class TextureData(
     val texture: Texture,

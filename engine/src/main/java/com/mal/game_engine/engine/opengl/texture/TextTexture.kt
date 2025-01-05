@@ -1,4 +1,4 @@
-package com.mal.component.opengl.core.texture
+package com.mal.game_engine.engine.opengl.texture
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -7,7 +7,7 @@ import android.graphics.Paint
 import android.graphics.Paint.Align
 import android.opengl.GLES30
 import android.opengl.GLUtils
-import com.mal.component.opengl.core.texture.param.TextureMode
+import com.mal.game_engine.engine.opengl.texture.param.TextureMode
 
 class TextTexture(
     private val text: String,

@@ -2,7 +2,6 @@ package com.mal.game_engine.engine.opengl.shape.circle
 
 import android.content.Context
 import android.opengl.GLES30
-import com.mal.component.opengl.core.shape.circle.CircleShapeData
 import com.mal.game_engine.engine.R
 import com.mal.game_engine.engine.opengl.BaseShape
 import com.mal.game_engine.engine.opengl.readRawResource

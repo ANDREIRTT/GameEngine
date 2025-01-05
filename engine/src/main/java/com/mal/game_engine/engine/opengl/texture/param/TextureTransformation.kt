@@ -1,4 +1,4 @@
-package com.mal.component.opengl.core.texture.param
+package com.mal.game_engine.engine.opengl.texture.param
 
 data class TextureTransformation(
     val rotationDegrees: Float,
