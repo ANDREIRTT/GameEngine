@@ -20,6 +20,8 @@ internal class EglHelper(private val surface: Surface) {
      * Инициализирует EGL: получает дисплей, инициализирует его, выбирает конфигурацию
      * и создаёт EGL-контекст.
      */
+    private  val EGL_OPENGL_ES3_BIT_KHR = 0x00000040
+
     fun start() {
         Log.w("EglHelper", "start() tid=${Thread.currentThread().id}")
 
@@ -36,8 +38,9 @@ internal class EglHelper(private val surface: Surface) {
             throw RuntimeException("eglInitialize failed")
         }
 
-        // Определяем атрибуты для выбора конфигурации
+        // Добавляем атрибут для запроса конфигурации с поддержкой ES 3.0
         val configAttribs = intArrayOf(
+            EGL10.EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT_KHR, // Запрашиваем ES 3.0
             EGL10.EGL_RED_SIZE, 8,
             EGL10.EGL_GREEN_SIZE, 8,
             EGL10.EGL_BLUE_SIZE, 8,
@@ -55,10 +58,10 @@ internal class EglHelper(private val surface: Surface) {
         }
         eglConfig = configs[0]
 
-        // Создаём EGL-контекст (без дополнительных атрибутов)
-        val contextAttribs = intArrayOf(EGL10.EGL_NONE)
-        eglContext =
-            egl!!.eglCreateContext(eglDisplay, eglConfig, EGL10.EGL_NO_CONTEXT, contextAttribs)
+        // Создаём EGL-контекст с указанием версии OpenGL ES 3.0
+        val EGL_CONTEXT_CLIENT_VERSION = 0x3098
+        val contextAttribs = intArrayOf(EGL_CONTEXT_CLIENT_VERSION, 3, EGL10.EGL_NONE)
+        eglContext = egl!!.eglCreateContext(eglDisplay, eglConfig, EGL10.EGL_NO_CONTEXT, contextAttribs)
         if (eglContext == null || eglContext === EGL10.EGL_NO_CONTEXT) {
             eglContext = null
             throwEglException("createContext")
@@ -68,7 +71,6 @@ internal class EglHelper(private val surface: Surface) {
         // На данном этапе поверхность ещё не создана
         eglSurface = null
     }
-
     /**
      * Создаёт EGL‑поверхность для заданного Surface. Если поверхность уже существует, уничтожает её.
      *
