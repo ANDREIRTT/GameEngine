@@ -29,7 +29,7 @@ class GameEngineGLSurface {
             }
         )
         glThread = GLThread(holder.surface, gameEngineRenderer).apply {
-            setRenderMode(GLThread.RENDERMODE_WHEN_DIRTY)
+            setRenderMode(GLThread.RENDERMODE_CONTINUOUSLY)
             holder.addCallback(object : SurfaceHolder.Callback {
                 override fun surfaceCreated(holder: SurfaceHolder) {
                     this@apply.surfaceCreated()

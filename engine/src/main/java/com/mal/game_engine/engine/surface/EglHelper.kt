@@ -2,6 +2,7 @@ package com.mal.game_engine.engine.surface
 
 import android.util.Log
 import android.view.Surface
+import com.mal.game_engine.engine.surface.config.OpenGLES3ConfigChooser
 import javax.microedition.khronos.egl.EGL10
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.egl.EGLContext
@@ -22,7 +23,6 @@ internal class EglHelper(private val surface: Surface) {
      */
     fun start() {
         Log.w("EglHelper", "start() tid=${Thread.currentThread().id}")
-
         egl = EGLContext.getEGL() as EGL10
 
         eglDisplay = egl!!.eglGetDisplay(EGL10.EGL_DEFAULT_DISPLAY)
@@ -30,42 +30,28 @@ internal class EglHelper(private val surface: Surface) {
             throw RuntimeException("eglGetDisplay failed")
         }
 
-        // Инициализируем дисплей
         val version = IntArray(2)
         if (!egl!!.eglInitialize(eglDisplay, version)) {
             throw RuntimeException("eglInitialize failed")
         }
 
-        // Определяем атрибуты для выбора конфигурации
-        val configAttribs = intArrayOf(
-            EGL10.EGL_RED_SIZE, 8,
-            EGL10.EGL_GREEN_SIZE, 8,
-            EGL10.EGL_BLUE_SIZE, 8,
-            EGL10.EGL_ALPHA_SIZE, 8,
-            EGL10.EGL_DEPTH_SIZE, 16,
-            EGL10.EGL_NONE
+        // Создаем config chooser для OpenGL ES 3.0 с нужными размерами компонентов
+        val configChooser = OpenGLES3ConfigChooser(
+            redSize = 8, greenSize = 8, blueSize = 8, alphaSize = 8,
+            depthSize = 16, stencilSize = 0
         )
-        val configs = arrayOfNulls<EGLConfig>(1)
-        val numConfigs = IntArray(1)
-        if (!egl!!.eglChooseConfig(eglDisplay, configAttribs, configs, 1, numConfigs)) {
-            throw RuntimeException("eglChooseConfig failed")
-        }
-        if (numConfigs[0] <= 0) {
-            throw RuntimeException("No configs match configSpec")
-        }
-        eglConfig = configs[0]
+        eglConfig = configChooser.chooseConfig(egl!!, eglDisplay!!)
 
-        // Создаём EGL-контекст (без дополнительных атрибутов)
-        val contextAttribs = intArrayOf(EGL10.EGL_NONE)
-        eglContext =
-            egl!!.eglCreateContext(eglDisplay, eglConfig, EGL10.EGL_NO_CONTEXT, contextAttribs)
+        // Создаем контекст с указанием версии 3
+        val EGL_CONTEXT_CLIENT_VERSION = 0x3098
+        val contextAttribs = intArrayOf(EGL_CONTEXT_CLIENT_VERSION, 3, EGL10.EGL_NONE)
+        eglContext = egl!!.eglCreateContext(eglDisplay, eglConfig, EGL10.EGL_NO_CONTEXT, contextAttribs)
         if (eglContext == null || eglContext === EGL10.EGL_NO_CONTEXT) {
             eglContext = null
             throwEglException("createContext")
         }
         Log.w("EglHelper", "createContext $eglContext tid=${Thread.currentThread().id}")
 
-        // На данном этапе поверхность ещё не создана
         eglSurface = null
     }
 

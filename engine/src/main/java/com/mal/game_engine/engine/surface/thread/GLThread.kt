@@ -111,7 +111,6 @@ class GLThread(
                     }
                     eglState = EGLState.CONTEXT_CREATED
                     gl = eglHelper.createGL() as? GL10
-                    renderer.onSurfaceCreated(gl, eglHelper.eglConfig)
                 }
 
                 RenderStage.CREATE_SURFACE -> {
@@ -124,6 +123,7 @@ class GLThread(
                     eglState = EGLState.SURFACE_CREATED
                     // При успешном создании устанавливаем, что поверхность AVAILABLE
                     surfaceStatus = SurfaceStatus.AVAILABLE
+                    renderer.onSurfaceCreated(gl, eglHelper.eglConfig)
                 }
 
                 RenderStage.INIT -> {
