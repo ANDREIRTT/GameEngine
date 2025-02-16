@@ -1,269 +1,277 @@
 package com.mal.game_engine.engine.surface.thread
 
+import android.opengl.GLSurfaceView
+import android.util.Log
+import android.view.Surface
 import com.mal.game_engine.engine.surface.EglHelper
-import java.util.concurrent.locks.ReentrantLock
 import javax.microedition.khronos.egl.EGL10
 import javax.microedition.khronos.egl.EGL11
 import javax.microedition.khronos.opengles.GL10
 import kotlin.concurrent.withLock
 
 class GLThread(
+    private val surface: Surface,
+    private val renderer: GLSurfaceView.Renderer
 ) : Thread() {
 
-    enum class RenderMode { WHEN_DIRTY, CONTINUOUSLY }
+    companion object {
+        const val RENDERMODE_WHEN_DIRTY = 0
+        const val RENDERMODE_CONTINUOUSLY = 1
+    }
 
-    @Volatile private var shouldExit = false
-    @Volatile private var exited = false
+    // Состояния жизненного цикла потока
+    private enum class ThreadStatus { RUNNING, PAUSED, EXITING }
 
-    @Volatile private var requestPaused = false
-    @Volatile private var paused = false
+    // Состояния EGL-среды
+    private enum class EGLState { NO_CONTEXT, CONTEXT_CREATED, SURFACE_CREATED, INITIALIZED }
 
-    @Volatile private var hasSurface = false
-    @Volatile private var surfaceIsBad = false
-    @Volatile private var waitingForSurface = false
+    // Этапы работы основного цикла
+    private enum class RenderStage {
+        WAITING,          // Нет валидных условий для рендера (например, размеры не заданы или нет запроса)
+        CREATE_CONTEXT,   // Нужно создать EGL-контекст
+        CREATE_SURFACE,   // Нужно создать EGL-поверхность
+        INIT,             // Нужно вызвать onSurfaceChanged для инициализации
+        RENDER            // Отрисовываем кадр
+    }
 
-    @Volatile private var haveEglContext = false
-    @Volatile private var haveEglSurface = false
+    @Volatile
+    private var threadStatus = ThreadStatus.RUNNING
 
-    @Volatile private var width = 0
-    @Volatile private var height = 0
-    @Volatile private var sizeChanged = true
+    @Volatile
+    private var eglState = EGLState.NO_CONTEXT
 
-    // Вместо int-режима используем enum
-    private var renderMode = RenderMode.CONTINUOUSLY
+    @Volatile
+    private var renderMode = RENDERMODE_CONTINUOUSLY
 
-    @Volatile private var requestRender = true
+    @Volatile
+    private var requestRender = false
 
-    // Очередь событий
+    // Размер области отрисовки
+    @Volatile
+    private var viewportWidth = 0
+
+    @Volatile
+    private var viewportHeight = 0
+
+    // Очередь событий для выполнения в GL-потоке
     private val eventQueue = mutableListOf<Runnable>()
 
-    // Пример помощника для EGL
-    private val eglHelper = EglHelper()
-
-    // Вместо synchronized(LOCK) + wait/notifyAll
-    // используем ReentrantLock и Condition
-    private val lock = ReentrantLock()
-    private val condition = lock.newCondition()
+    // Помощник для работы с EGL
+    private lateinit var eglHelper: EglHelper
 
     override fun run() {
-        name = "KotlinGLThread-${id}"
+        name = "GLThread $id"
+        Log.i("GLThread", "starting tid=$id")
         try {
             guardedRun()
-        } catch (e: InterruptedException) {
-            // обработаем прерывание, если нужно
+        } catch (ie: InterruptedException) {
+            // Завершаем работу корректно
         } finally {
-            lock.withLock {
-                stopEglSurfaceLocked()
-                stopEglContextLocked()
-                exited = true
-                // Вместо notifyAll() -> condition.signalAll()
-                condition.signalAll()
-            }
+            GLThreadManager.threadExiting(this)
         }
     }
 
+    /**
+     * Основной цикл работы GL-потока.
+     */
     private fun guardedRun() {
+        eglHelper = EglHelper(surface)
         var gl: GL10? = null
-        var createEglContext = false
-        var createEglSurface = false
-        var createGlInterface = false
-        var lostEglContext = false
 
         while (true) {
-            var event: Runnable? = null
+            // Определяем текущий этап, используя withLock для блокировки
+            val currentStage = waitForRenderStage() ?: return
 
-            lock.withLock {
-                while (true) {
-                    if (shouldExit) return
-
-                    if (eventQueue.isNotEmpty()) {
-                        event = eventQueue.removeAt(0)
-                        break
+            // Выполнение действий по этапу вне блока withLock
+            when (currentStage) {
+                RenderStage.CREATE_CONTEXT -> {
+                    try {
+                        eglHelper.start() // Создаем EGL-контекст
+                    } catch (t: RuntimeException) {
+                        Log.e("GLThread", "Unable to start EGL context", t)
+                        return
                     }
+                    eglState = EGLState.CONTEXT_CREATED
 
-                    if (paused != requestPaused) {
-                        paused = requestPaused
-                        condition.signalAll()
+                    gl = eglHelper.createGL() as? GL10
+                    renderer.onSurfaceCreated(gl, eglHelper.eglConfig)
+                }
+
+                RenderStage.CREATE_SURFACE -> {
+                    if (!eglHelper.createSurface()) {
+                        Log.w("GLThread", "createSurface failed; retrying...")
+                        continue
                     }
+                    eglState = EGLState.SURFACE_CREATED
+                }
 
-                    // Если мы потеряли surface
-                    if (!hasSurface && !waitingForSurface) {
-                        waitingForSurface = true
-                        surfaceIsBad = false
-                        condition.signalAll()
-                    }
+                RenderStage.INIT -> {
+                    // Вызываем onSurfaceChanged для инициализации
+                    renderer.onSurfaceChanged(gl, viewportWidth, viewportHeight)
+                    eglState = EGLState.INITIALIZED
+                }
 
-                    // Если surface появился
-                    if (hasSurface && waitingForSurface) {
-                        waitingForSurface = false
-                        condition.signalAll()
-                    }
-
-                    // Готовы ли мы к отрисовке?
-                    if (readyToDraw()) {
-                        if (!haveEglContext) {
-//                            eglHelper.start()
-                            haveEglContext = true
-                            createEglContext = true
-                            condition.signalAll()
+                RenderStage.RENDER -> {
+                    renderer.onDrawFrame(gl)
+                    when (val swapError = eglHelper.swap()) {
+                        EGL10.EGL_SUCCESS -> {
+                            // успешно обменяли буферы
                         }
 
-                        if (haveEglContext && !haveEglSurface) {
-                            haveEglSurface = true
-                            createEglSurface = true
-                            createGlInterface = true
-                            sizeChanged = true
+                        EGL11.EGL_CONTEXT_LOST -> {
+                            Log.i("GLThread", "EGL context lost tid=$id")
+                            eglState = EGLState.NO_CONTEXT
+                            continue
                         }
 
-                        if (haveEglSurface) {
-                            if (sizeChanged) {
-                                sizeChanged = false
-                                // Запоминаем размер
-                            }
+                        else -> {
+                            EglHelper.logEglErrorAsWarning("GLThread", "eglSwapBuffers", swapError)
+                            continue
+                        }
+                    }
+                    // Если режим WHEN_DIRTY – сбрасываем флаг запроса
+                    GLThreadManager.lock.withLock {
+                        if (renderMode == RENDERMODE_WHEN_DIRTY) {
                             requestRender = false
-                            condition.signalAll()
-                            break
                         }
+                        GLThreadManager.condition.signalAll()
                     }
-
-                    // Если не готовы к отрисовке — ждём
-                    // Вместо wait() -> condition.await()
-                    condition.await()
                 }
-            } // end lock
 
-            // Выполним задачу
-            event?.run()
+                RenderStage.WAITING -> {}
+            }
+        }
+    }
 
-            // Создадим EGL-сурфейс
-            if (createEglSurface) {
-                /*if (!eglHelper.createSurface()) {
-                    lock.withLock {
-                        surfaceIsBad = true
-                        condition.signalAll()
-                    }
+    private fun waitForRenderStage(): RenderStage? {
+        GLThreadManager.lock.withLock {
+            while (true) {
+                if (threadStatus == ThreadStatus.EXITING) return null
+
+                if (eventQueue.isNotEmpty()) {
+                    eventQueue.removeAt(0).run()
+                    // После выполнения события продолжаем проверку
                     continue
-                }*/
-                createEglSurface = false
-            }
-
-            // Создадим GL
-            if (createGlInterface) {
-//                gl = eglHelper.createGL() as? GL10
-                createGlInterface = false
-            }
-
-            // onSurfaceCreated
-            if (createEglContext) {
-//                glSurfaceViewRef.get()?.renderer?.onSurfaceCreated(gl, eglHelper.eglConfig)
-                createEglContext = false
-            }
-
-            // onSurfaceChanged
-//            glSurfaceViewRef.get()?.renderer?.onSurfaceChanged(gl, width, height)
-
-            // onDrawFrame
-//            glSurfaceViewRef.get()?.renderer?.onDrawFrame(gl)
-
- /*           // Свап буферов
-            val swapError = eglHelper.swap()
-            when (swapError) {
-                EGL10.EGL_SUCCESS -> {}
-                EGL11.EGL_CONTEXT_LOST -> {
-                    lostEglContext = true
                 }
-                else -> {
-                    lock.withLock {
-                        surfaceIsBad = true
-                        condition.signalAll()
+
+                val stage = determineRenderStage()
+                if (stage == RenderStage.WAITING || threadStatus == ThreadStatus.PAUSED) {
+                    // Если условия не выполнены, ожидаем сигнала об изменении состояния
+                    try {
+                        GLThreadManager.condition.await()
+                    } catch (ie: InterruptedException) {
+                        currentThread().interrupt()
+                        return null
                     }
+                } else {
+                    return stage
                 }
-            }*/
+            }
         }
     }
 
-    private fun readyToDraw(): Boolean {
-        return !paused && hasSurface && !surfaceIsBad &&
-                width > 0 && height > 0 &&
-                (requestRender || renderMode == RenderMode.CONTINUOUSLY)
+    /**
+     * Определяет текущий этап (RenderStage) на основе внутренних состояний.
+     * Этот метод вызывается внутри блока withLock.
+     */
+    private fun determineRenderStage(): RenderStage = when {
+        viewportWidth <= 0 || viewportHeight <= 0 ||
+                (!requestRender && renderMode == RENDERMODE_WHEN_DIRTY) ->
+            RenderStage.WAITING
+
+        eglState == EGLState.NO_CONTEXT ->
+            RenderStage.CREATE_CONTEXT
+
+        eglState == EGLState.CONTEXT_CREATED ->
+            RenderStage.CREATE_SURFACE
+
+        eglState == EGLState.SURFACE_CREATED ->
+            RenderStage.INIT
+
+        eglState == EGLState.INITIALIZED &&
+                (requestRender || renderMode == RENDERMODE_CONTINUOUSLY) ->
+            RenderStage.RENDER
+
+        else -> RenderStage.WAITING
     }
 
-    private fun stopEglSurfaceLocked() {
-        if (haveEglSurface) {
-            haveEglSurface = false
-//            eglHelper.destroySurface()
+    // --- Методы управления потоком ---
+
+    /**
+     * Задает режим рендера.
+     */
+    fun setRenderMode(mode: Int) {
+        require(mode in RENDERMODE_WHEN_DIRTY..RENDERMODE_CONTINUOUSLY) { "Invalid render mode" }
+        GLThreadManager.lock.withLock {
+            renderMode = mode
+            GLThreadManager.condition.signalAll()
         }
     }
 
-    private fun stopEglContextLocked() {
-        if (haveEglContext) {
-//            eglHelper.finish()
-            haveEglContext = false
+    /**
+     * Запрос на рендер.
+     */
+    fun requestRender() {
+        GLThreadManager.lock.withLock {
+            requestRender = true
+            GLThreadManager.condition.signalAll()
         }
     }
 
-    // Методы для UI-потока
-
-    fun surfaceCreated() {
-        lock.withLock {
-            hasSurface = true
-            condition.signalAll()
-        }
-    }
-
-    fun surfaceDestroyed() {
-        lock.withLock {
-            hasSurface = false
-            condition.signalAll()
+    /**
+     * Устанавливает размеры области отрисовки.
+     */
+    fun onWindowResize(width: Int, height: Int) {
+        GLThreadManager.lock.withLock {
+            viewportWidth = width
+            viewportHeight = height
+            requestRender = true
+            GLThreadManager.condition.signalAll()
         }
     }
 
     fun onPause() {
-        lock.withLock {
-            requestPaused = true
-            condition.signalAll()
+        GLThreadManager.lock.withLock {
+            threadStatus = ThreadStatus.PAUSED
+            GLThreadManager.condition.signalAll()
         }
     }
 
+    // Метод для возобновления
     fun onResume() {
-        lock.withLock {
-            requestPaused = false
-            requestRender = true
-            condition.signalAll()
+        GLThreadManager.lock.withLock {
+            threadStatus = ThreadStatus.RUNNING
+            requestRender = true // возможно, для вызова обновления
+            GLThreadManager.condition.signalAll()
         }
     }
 
-    fun onWindowResize(w: Int, h: Int) {
-        lock.withLock {
-            width = w
-            height = h
-            sizeChanged = true
-            requestRender = true
-            condition.signalAll()
-        }
-    }
-
-    fun requestRender() {
-        lock.withLock {
-            requestRender = true
-            condition.signalAll()
-        }
-    }
-
+    /**
+     * Добавляет событие для выполнения в GL-потоке.
+     */
     fun queueEvent(r: Runnable) {
-        lock.withLock {
+        GLThreadManager.lock.withLock {
             eventQueue.add(r)
-            condition.signalAll()
+            GLThreadManager.condition.signalAll()
         }
     }
 
+    /**
+     * Запрашивает завершение работы потока и ждёт его остановки.
+     * Вызывать не из GL-потока.
+     */
     fun requestExitAndWait() {
-        lock.withLock {
-            shouldExit = true
-            condition.signalAll()
-            while (!exited) {
-                condition.await()
-            }
+        if (Thread.currentThread() == this) {
+            throw RuntimeException("requestExitAndWait cannot be called from GLThread")
+        }
+        GLThreadManager.lock.withLock {
+            threadStatus = ThreadStatus.EXITING
+            GLThreadManager.condition.signalAll()
+        }
+        try {
+            join()
+        } catch (ie: InterruptedException) {
+            currentThread().interrupt()
         }
     }
 }
