@@ -200,10 +200,6 @@ class GLThread(
         }
     }
 
-    /**
-     * Определяет текущий этап рендера на основе всех внутренних состояний.
-     * Этот метод вызывается внутри блока withLock.
-     */
     private fun determineRenderStage(): RenderStage = when {
         threadStatus == ThreadStatus.PAUSED -> RenderStage.WAITING
         // Если поверхность не доступна – ждем
@@ -239,7 +235,7 @@ class GLThread(
 
     fun requestRenderAndNotify(finishDrawing: Runnable?) {
         GLThreadManager.lock.withLock {
-            if (Thread.currentThread() == this) return
+            if (currentThread() == this) return
             renderNotificationStatus = RenderNotificationStatus.REQUESTED
             requestRender = true
             finishDrawingRunnable = if (finishDrawingRunnable != null) {
@@ -274,9 +270,6 @@ class GLThread(
         }
     }
 
-    /**
-     * Вызывается при появлении поверхности.
-     */
     fun surfaceCreated() {
         GLThreadManager.lock.withLock {
             Log.i("GLThread", "surfaceCreated tid=$id")
@@ -285,10 +278,6 @@ class GLThread(
         }
     }
 
-    /**
-     * Вызывается при уничтожении поверхности. Здесь устанавливаем статус WAITING,
-     * чтобы сигнализировать, что ждём появления новой поверхности.
-     */
     fun surfaceDestroyed() {
         GLThreadManager.lock.withLock {
             Log.i("GLThread", "surfaceDestroyed tid=$id")
@@ -312,7 +301,7 @@ class GLThread(
     }
 
     fun requestExitAndWait() {
-        if (Thread.currentThread() == this) {
+        if (currentThread() == this) {
             throw RuntimeException("requestExitAndWait cannot be called from GLThread")
         }
         GLThreadManager.lock.withLock {
