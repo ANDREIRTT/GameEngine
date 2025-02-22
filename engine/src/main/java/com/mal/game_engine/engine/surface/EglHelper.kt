@@ -22,7 +22,6 @@ internal class EglHelper(private val surface: Surface) {
      * и создаёт EGL-контекст.
      */
     fun start() {
-        Log.w("EglHelper", "start() tid=${Thread.currentThread().id}")
         egl = EGLContext.getEGL() as EGL10
 
         eglDisplay = egl!!.eglGetDisplay(EGL10.EGL_DEFAULT_DISPLAY)
@@ -61,8 +60,6 @@ internal class EglHelper(private val surface: Surface) {
      * @return true, если поверхность успешно создана и сделана текущей.
      */
     fun createSurface(): Boolean {
-        Log.w("EglHelper", "createSurface() tid=${Thread.currentThread().id}")
-
         // Проверяем, что EGL и его компоненты инициализированы
         if (egl == null) {
             throw RuntimeException("egl not initialized")
@@ -82,7 +79,6 @@ internal class EglHelper(private val surface: Surface) {
         if (eglSurface == null || eglSurface === EGL10.EGL_NO_SURFACE) {
             val error = egl!!.eglGetError()
             if (error == EGL10.EGL_BAD_NATIVE_WINDOW) {
-                Log.e("EglHelper", "createWindowSurface returned EGL_BAD_NATIVE_WINDOW.")
             }
             return false
         }
@@ -116,7 +112,6 @@ internal class EglHelper(private val surface: Surface) {
      * Уничтожает EGL‑поверхность.
      */
     fun destroySurface() {
-        Log.w("EglHelper", "destroySurface() tid=${Thread.currentThread().id}")
         destroySurfaceImp()
     }
 

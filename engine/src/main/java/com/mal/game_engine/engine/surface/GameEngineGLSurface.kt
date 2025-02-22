@@ -6,6 +6,7 @@ import com.mal.game_engine.engine.GameEngineRenderer
 import com.mal.game_engine.engine.di.DISPATCHER_IO
 import com.mal.game_engine.engine.game.GameLoop
 import com.mal.game_engine.engine.game.component.GameComponent
+import com.mal.game_engine.engine.logI
 import com.mal.game_engine.engine.opengl.BaseShape
 import com.mal.game_engine.engine.surface.thread.GLThread
 import org.koin.core.qualifier.named
@@ -13,6 +14,7 @@ import org.koin.core.qualifier.named
 class GameEngineGLSurface {
 
     private var glThread: GLThread? = null
+    private var gameLoop: GameLoop? = null
 
     fun attachSurface(
         shapes: List<BaseShape<out Any>>,
@@ -26,7 +28,9 @@ class GameEngineGLSurface {
                 components = components
             ) {
                 glThread?.requestRender()
-            }.also { it.startGame() }
+            }.also {
+                gameLoop = it
+            }
         )
         glThread = GLThread(holder.surface, gameEngineRenderer).apply {
             setRenderMode(GLThread.RENDERMODE_WHEN_DIRTY)
@@ -50,5 +54,21 @@ class GameEngineGLSurface {
             })
             start()
         }
+    }
+
+    fun onDestroy() {
+        gameLoop?.stopGame()
+        glThread?.requestReleaseEglContext()
+        glThread?.requestExitAndWait()
+    }
+
+    fun onPause() {
+        gameLoop?.stopGame()
+        glThread?.onPause()
+    }
+
+    fun onResume() {
+        glThread?.onResume()
+        gameLoop?.startGame()
     }
 }

@@ -3,13 +3,14 @@ package com.mal.game_engine.engine.surface.thread
 import android.opengl.GLSurfaceView
 import android.util.Log
 import android.view.Surface
+import co.touchlab.stately.concurrency.AtomicBoolean
 import com.mal.game_engine.engine.surface.EglHelper
 import javax.microedition.khronos.egl.EGL10
 import javax.microedition.khronos.egl.EGL11
 import javax.microedition.khronos.opengles.GL10
 import kotlin.concurrent.withLock
 
-class GLThread(
+internal class GLThread(
     private val surface: Surface,
     private val renderer: GLSurfaceView.Renderer
 ) : Thread() {
@@ -48,24 +49,30 @@ class GLThread(
 
     @Volatile
     private var threadStatus = ThreadStatus.RUNNING
+
     @Volatile
     private var eglState = EGLState.NO_CONTEXT
+
     @Volatile
     private var renderMode = RENDERMODE_CONTINUOUSLY
-    @Volatile
-    private var requestRender = false
+
+    private var requestRender = AtomicBoolean(false)
 
     @Volatile
     private var viewportWidth = 0
+
     @Volatile
     private var viewportHeight = 0
 
     @Volatile
     private var surfaceStatus: SurfaceStatus = SurfaceStatus.NONE
+
     @Volatile
     private var sizeStatus: SizeStatus = SizeStatus.UNKNOWN
+
     @Volatile
     private var renderNotificationStatus: RenderNotificationStatus = RenderNotificationStatus.NONE
+
     @Volatile
     private var eglContextRetention: EGLContextRetention = EGLContextRetention.RETAIN
 
@@ -79,14 +86,13 @@ class GLThread(
     private lateinit var eglHelper: EglHelper
 
     override fun run() {
-        name = "GLThread $id"
-        Log.i("GLThread", "starting tid=$id")
         try {
             guardedRun()
-        } catch (ie: InterruptedException) {
-            // Завершаем работу корректно при прерывании
+        } catch (_: InterruptedException) {
         } finally {
-            GLThreadManager.threadExiting(this)
+            GLThreadManager.lock.withLock {
+                GLThreadManager.condition.signalAll()
+            }
         }
     }
 
@@ -98,13 +104,12 @@ class GLThread(
         var gl: GL10? = null
 
         while (true) {
-            // Ждём наступления условий для следующего этапа
             val currentStage = waitForRenderStage() ?: return
 
             when (currentStage) {
                 RenderStage.CREATE_CONTEXT -> {
                     try {
-                        eglHelper.start() // Создаём EGL-контекст
+                        eglHelper.start()
                     } catch (t: RuntimeException) {
                         Log.e("GLThread", "Unable to start EGL context", t)
                         return
@@ -114,14 +119,11 @@ class GLThread(
                 }
 
                 RenderStage.CREATE_SURFACE -> {
-                    // Если создание поверхности не удалось, устанавливаем статус BAD
                     if (!eglHelper.createSurface()) {
-                        Log.w("GLThread", "createSurface failed; marking surface as BAD")
                         surfaceStatus = SurfaceStatus.BAD
                         continue
                     }
                     eglState = EGLState.SURFACE_CREATED
-                    // При успешном создании устанавливаем, что поверхность AVAILABLE
                     surfaceStatus = SurfaceStatus.AVAILABLE
                     renderer.onSurfaceCreated(gl, eglHelper.eglConfig)
                 }
@@ -133,13 +135,16 @@ class GLThread(
                 }
 
                 RenderStage.RENDER -> {
+                    if (renderMode == RENDERMODE_WHEN_DIRTY) {
+                        requestRender.value = false
+                    }
+
                     renderer.onDrawFrame(gl)
                     when (val swapError = eglHelper.swap()) {
                         EGL10.EGL_SUCCESS -> { /* всё успешно */
                         }
 
                         EGL11.EGL_CONTEXT_LOST -> {
-                            Log.i("GLThread", "EGL context lost tid=$id")
                             eglState = EGLState.NO_CONTEXT
                             continue
                         }
@@ -149,16 +154,10 @@ class GLThread(
                             continue
                         }
                     }
-                    GLThreadManager.lock.withLock {
-                        if (renderMode == RENDERMODE_WHEN_DIRTY) {
-                            requestRender = false
-                        }
-                        if (renderNotificationStatus == RenderNotificationStatus.REQUESTED) {
-                            finishDrawingRunnable?.run()
-                            finishDrawingRunnable = null
-                            renderNotificationStatus = RenderNotificationStatus.COMPLETE
-                        }
-                        GLThreadManager.condition.signalAll()
+                    if (renderNotificationStatus == RenderNotificationStatus.REQUESTED) {
+                        finishDrawingRunnable?.run()
+                        finishDrawingRunnable = null
+                        renderNotificationStatus = RenderNotificationStatus.COMPLETE
                     }
                 }
 
@@ -180,10 +179,10 @@ class GLThread(
                     eventQueue.removeAt(0).run()
                     continue
                 }
-                // Если запрошено освобождение контекста, сбрасываем состояние
                 if (eglContextRetention == EGLContextRetention.RELEASE_REQUESTED) {
                     eglState = EGLState.NO_CONTEXT
                     eglContextRetention = EGLContextRetention.RETAIN
+                    eglHelper.finish()
                 }
                 val stage = determineRenderStage()
                 if (stage == RenderStage.WAITING) {
@@ -202,18 +201,20 @@ class GLThread(
 
     private fun determineRenderStage(): RenderStage = when {
         threadStatus == ThreadStatus.PAUSED -> RenderStage.WAITING
-        // Если поверхность не доступна – ждем
         surfaceStatus != SurfaceStatus.AVAILABLE -> RenderStage.WAITING
-        viewportWidth <= 0 || viewportHeight <= 0 ||
-                (!requestRender && renderMode == RENDERMODE_WHEN_DIRTY) -> RenderStage.WAITING
 
+        viewportWidth <= 0 || viewportHeight <= 0 -> RenderStage.WAITING
+
+        !requestRender.value && renderMode == RENDERMODE_WHEN_DIRTY -> RenderStage.WAITING
         eglState == EGLState.NO_CONTEXT -> RenderStage.CREATE_CONTEXT
         eglState == EGLState.CONTEXT_CREATED -> RenderStage.CREATE_SURFACE
         eglState == EGLState.SURFACE_CREATED || sizeStatus == SizeStatus.CHANGED -> RenderStage.INIT
         eglState == EGLState.INITIALIZED &&
-                (requestRender || renderMode == RENDERMODE_CONTINUOUSLY) -> RenderStage.RENDER
+                (requestRender.value || renderMode == RENDERMODE_CONTINUOUSLY) -> RenderStage.RENDER
 
-        else -> RenderStage.WAITING
+        else -> {
+            RenderStage.WAITING
+        }
     }
 
     // --- Методы управления потоком и обновления состояний ---
@@ -228,7 +229,7 @@ class GLThread(
 
     fun requestRender() {
         GLThreadManager.lock.withLock {
-            requestRender = true
+            requestRender.value = true
             GLThreadManager.condition.signalAll()
         }
     }
@@ -237,7 +238,7 @@ class GLThread(
         GLThreadManager.lock.withLock {
             if (currentThread() == this) return
             renderNotificationStatus = RenderNotificationStatus.REQUESTED
-            requestRender = true
+            requestRender.value = true
             finishDrawingRunnable = if (finishDrawingRunnable != null) {
                 Runnable { finishDrawingRunnable!!.run(); finishDrawing?.run() }
             } else finishDrawing
@@ -250,7 +251,7 @@ class GLThread(
             viewportWidth = width
             viewportHeight = height
             sizeStatus = SizeStatus.CHANGED
-            requestRender = true
+            requestRender.value = true
             GLThreadManager.condition.signalAll()
         }
     }
@@ -265,14 +266,13 @@ class GLThread(
     fun onResume() {
         GLThreadManager.lock.withLock {
             threadStatus = ThreadStatus.RUNNING
-            requestRender = true
+            requestRender.value = true
             GLThreadManager.condition.signalAll()
         }
     }
 
     fun surfaceCreated() {
         GLThreadManager.lock.withLock {
-            Log.i("GLThread", "surfaceCreated tid=$id")
             surfaceStatus = SurfaceStatus.AVAILABLE
             GLThreadManager.condition.signalAll()
         }
@@ -280,7 +280,6 @@ class GLThread(
 
     fun surfaceDestroyed() {
         GLThreadManager.lock.withLock {
-            Log.i("GLThread", "surfaceDestroyed tid=$id")
             surfaceStatus = SurfaceStatus.WAITING
             GLThreadManager.condition.signalAll()
         }

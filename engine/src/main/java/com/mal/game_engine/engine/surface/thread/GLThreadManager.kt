@@ -9,13 +9,4 @@ import java.util.concurrent.locks.ReentrantLock
 internal object GLThreadManager {
     val lock = ReentrantLock()
     val condition: Condition = lock.newCondition()
-
-    fun threadExiting(thread: GLThread) {
-        lock.lock()
-        try {
-            condition.signalAll()
-        } finally {
-            lock.unlock()
-        }
-    }
 }

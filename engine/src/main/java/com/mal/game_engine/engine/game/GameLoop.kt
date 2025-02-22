@@ -6,6 +6,7 @@ import com.mal.game_engine.engine.game.component.GameComponent
 import com.mal.game_engine.engine.game.ext.calculate
 import com.mal.game_engine.engine.game.ext.onDragChanged
 import com.mal.game_engine.engine.game.ext.onDragFinish
+import com.mal.game_engine.engine.logI
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
