@@ -6,7 +6,8 @@ import com.mal.game_engine.engine.game.component.GameComponent
 import com.mal.game_engine.engine.game.ext.calculate
 import com.mal.game_engine.engine.game.ext.onDragChanged
 import com.mal.game_engine.engine.game.ext.onDragFinish
-import com.mal.game_engine.engine.logI
+import com.mal.game_engine.engine.game.ext.onStart
+import com.mal.game_engine.engine.game.ext.onStop
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
@@ -32,12 +33,11 @@ internal class GameLoop(
             return isGameRunning.get()
         }
 
-    private val obj = Any()
-
     private var isGameRunning = AtomicBoolean(false)
 
     fun startGame() {
-        stopGame()
+        stopGameInternal()
+        components.onStart()
         isGameRunning.set(true)
 
         var lastTime = System.nanoTime()
@@ -61,13 +61,13 @@ internal class GameLoop(
                 }
                 renderCount++
                 render()
-                while (mutex.holdsLock(obj)) {
+                while (mutex.isLocked) {
                     yield()
                 }
-                if (!this.isActive) {
+                if (!this.isActive || !isGameRunning.get()) {
                     break
                 }
-                mutex.lock(obj)
+                mutex.lock()
                 if (System.currentTimeMillis() - time >= 1000) {
                     time = System.currentTimeMillis()
                     Log.i("fps", "ticks:$tickCount, render:$renderCount")
@@ -80,6 +80,11 @@ internal class GameLoop(
     }
 
     fun stopGame() {
+        stopGameInternal()
+        components.onStop()
+    }
+
+    private fun stopGameInternal() {
         isGameRunning.set(false)
         unlockMutex()
     }
@@ -89,9 +94,9 @@ internal class GameLoop(
     }
 
     private fun unlockMutex() {
-        if (mutex.holdsLock(obj)) {
+        if (mutex.isLocked) {
             try {
-                mutex.unlock(obj)
+                mutex.unlock()
             } catch (_: Exception) {
             }
         }

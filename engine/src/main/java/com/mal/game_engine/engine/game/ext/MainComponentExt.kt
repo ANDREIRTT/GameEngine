@@ -22,6 +22,16 @@ internal fun List<GameComponent>.onDragFinish(coordinate: Coordinate) {
     forEach { it.getBehaviorComponent().onDragFinish(coordinate) }
 }
 
+internal fun List<GameComponent>.onStop() {
+    forEach { it.getBehaviorComponent().onStop() }
+    forEach { it.getRenderComponent().onStop() }
+}
+
+internal fun List<GameComponent>.onStart() {
+    forEach { it.getBehaviorComponent().onStart() }
+    forEach { it.getRenderComponent().onStart() }
+}
+
 internal fun List<GameComponent>.render() {
     forEach { it.getRenderComponent().render() }
 }
