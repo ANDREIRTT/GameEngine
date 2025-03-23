@@ -52,8 +52,16 @@ class DrawableTexture(
             options.inScaled = false
 
             val (bitmap, ratio) = getDrawable(context, resource)!!.let {
-                _width = textureSize.width
-                _height = textureSize.height
+                _width = if (it.intrinsicWidth == -1) {
+                    textureSize.width
+                } else {
+                    it.intrinsicWidth
+                }
+                _height = if (it.intrinsicHeight == -1) {
+                    textureSize.height
+                } else {
+                    it.intrinsicHeight
+                }
                 Pair(
                     it.toBitmap(
                         textureSize.width,
@@ -75,6 +83,8 @@ class DrawableTexture(
                 GLES30.GL_TEXTURE_MAG_FILTER,
                 GLES30.GL_LINEAR
             )
+            GLES30.glEnable(GLES30.GL_BLEND)
+            GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA, GLES30.GL_ONE_MINUS_SRC_ALPHA)
 
             GLUtils.texImage2D(GLES30.GL_TEXTURE_2D, 0, bitmap, 0)
 

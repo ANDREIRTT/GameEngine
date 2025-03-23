@@ -6,4 +6,8 @@ interface RenderComponent {
     fun onScreenChanged()
 
     fun render()
+
+    fun onStop(){}
+
+    fun onStart(){}
 }
