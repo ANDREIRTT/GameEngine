@@ -6,6 +6,7 @@ import android.opengl.GLSurfaceView
 import android.util.AttributeSet
 import android.view.GestureDetector
 import android.view.MotionEvent
+import android.view.ViewConfiguration
 import com.mal.game_engine.engine.coordinate.Coordinate
 import com.mal.game_engine.engine.di.DISPATCHER_IO
 import com.mal.game_engine.engine.di.IsolatedKoinComponent
@@ -14,6 +15,7 @@ import com.mal.game_engine.engine.game.component.GameComponent
 import com.mal.game_engine.engine.opengl.BaseShape
 import org.koin.core.component.get
 import org.koin.core.qualifier.named
+import kotlin.math.abs
 
 class GameEngineGLSurface @JvmOverloads constructor(
     context: Context,
@@ -21,6 +23,8 @@ class GameEngineGLSurface @JvmOverloads constructor(
 ) : GLSurfaceView(context, attrs), IsolatedKoinComponent {
 
     private val touchPoints = mutableMapOf<Int, Coordinate>()
+    private val initialTouchCoords = mutableMapOf<Int, Coordinate>()
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
     init {
         setEGLContextClientVersion(3)
@@ -70,6 +74,7 @@ class GameEngineGLSurface @JvmOverloads constructor(
                     event.getX(pointerIndex).toDouble(),
                     event.getY(pointerIndex).toDouble()
                 )
+                initialTouchCoords[pointerId] = coordinate
                 touchPoints[pointerId] = coordinate
                 gameEngineRenderer.onTouch(coordinate)
             }
@@ -77,13 +82,22 @@ class GameEngineGLSurface @JvmOverloads constructor(
             MotionEvent.ACTION_MOVE -> {
                 for (i in 0 until event.pointerCount) {
                     val id = event.getPointerId(i)
-                    touchPoints[id]?.let {
-                        val coordinate = Coordinate(
-                            event.getX(i).toDouble(),
-                            event.getY(i).toDouble()
-                        )
-                        touchPoints[id] = coordinate
-                        gameEngineRenderer.onTouch(coordinate)
+                    val initial = initialTouchCoords[id] ?: continue
+                    val currentX = event.getX(i).toDouble()
+                    val currentY = event.getY(i).toDouble()
+
+                    val dx = abs(currentX - initial.x)
+                    val dy = abs(currentY - initial.y)
+                    val isMovement = dx > touchSlop || dy > touchSlop
+                    if (isMovement) {
+                        touchPoints[id]?.let {
+                            val coordinate = Coordinate(
+                                event.getX(i).toDouble(),
+                                event.getY(i).toDouble()
+                            )
+                            touchPoints[id] = coordinate
+                            gameEngineRenderer.onTouch(coordinate)
+                        }
                     }
                 }
             }
