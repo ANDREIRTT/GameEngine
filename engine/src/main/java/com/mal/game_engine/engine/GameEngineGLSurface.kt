@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.opengl.GLSurfaceView
 import android.util.AttributeSet
-import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import com.mal.game_engine.engine.coordinate.Coordinate
@@ -23,7 +22,7 @@ class GameEngineGLSurface @JvmOverloads constructor(
 ) : GLSurfaceView(context, attrs), IsolatedKoinComponent {
 
     private val touchPoints = mutableMapOf<Int, Coordinate>()
-    private val initialTouchCoords = mutableMapOf<Int, Coordinate>()
+    private val initialTouch = mutableMapOf<Int, Pair<Coordinate, Long>>()
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
     init {
@@ -32,14 +31,6 @@ class GameEngineGLSurface @JvmOverloads constructor(
     }
 
     private lateinit var gameEngineRenderer: GameEngineRenderer
-
-    private val gestureDetector =
-        GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onSingleTapUp(e: MotionEvent): Boolean {
-                gameEngineRenderer.onClick(Coordinate(e.x.toDouble(), e.y.toDouble()))
-                return true
-            }
-        })
 
     fun create(
         shapes: List<BaseShape<out Any>>,
@@ -64,17 +55,13 @@ class GameEngineGLSurface @JvmOverloads constructor(
         val pointerIndex = event.actionIndex
         val pointerId = event.getPointerId(pointerIndex)
 
-        if (gestureDetector.onTouchEvent(event)) {
-            return true
-        }
-
         when (action) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                 val coordinate = Coordinate(
                     event.getX(pointerIndex).toDouble(),
                     event.getY(pointerIndex).toDouble()
                 )
-                initialTouchCoords[pointerId] = coordinate
+                initialTouch[pointerId] = coordinate to System.currentTimeMillis()
                 touchPoints[pointerId] = coordinate
                 gameEngineRenderer.onTouch(coordinate)
             }
@@ -82,7 +69,7 @@ class GameEngineGLSurface @JvmOverloads constructor(
             MotionEvent.ACTION_MOVE -> {
                 for (i in 0 until event.pointerCount) {
                     val id = event.getPointerId(i)
-                    val initial = initialTouchCoords[id] ?: continue
+                    val (initial) = initialTouch[id] ?: continue
                     val currentX = event.getX(i).toDouble()
                     val currentY = event.getY(i).toDouble()
 
@@ -104,8 +91,24 @@ class GameEngineGLSurface @JvmOverloads constructor(
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_CANCEL -> {
                 if (event.pointerCount == 1) {
-                    gameEngineRenderer.onStop(Coordinate(event.x.toDouble(), event.y.toDouble()))
+                    val delay = initialTouch[pointerId]?.second ?: 0
+                    if (System.currentTimeMillis() - delay >= 100) {
+                        gameEngineRenderer.onStop(
+                            Coordinate(
+                                event.x.toDouble(),
+                                event.y.toDouble()
+                            )
+                        )
+                    } else {
+                        gameEngineRenderer.onClick(
+                            Coordinate(
+                                event.x.toDouble(),
+                                event.y.toDouble()
+                            )
+                        )
+                    }
                 }
+                initialTouch.remove(pointerId)
                 touchPoints.remove(pointerId)
             }
         }
