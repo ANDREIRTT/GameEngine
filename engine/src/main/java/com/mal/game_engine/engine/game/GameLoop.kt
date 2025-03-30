@@ -4,6 +4,7 @@ import android.util.Log
 import com.mal.game_engine.engine.coordinate.Coordinate
 import com.mal.game_engine.engine.game.component.GameComponent
 import com.mal.game_engine.engine.game.ext.calculate
+import com.mal.game_engine.engine.game.ext.onClick
 import com.mal.game_engine.engine.game.ext.onDragChanged
 import com.mal.game_engine.engine.game.ext.onDragFinish
 import com.mal.game_engine.engine.game.ext.onStart
@@ -114,12 +115,19 @@ internal class GameLoop(
         }
     }
 
+    fun onClick(coordinate: Coordinate) {
+        synchronized(dragPool) {
+            dragPool.add(DragStatus.Click(coordinate))
+        }
+    }
+
     private suspend fun processInput() {
         synchronized(dragPool) {
             dragPool.forEach { dragStatus ->
                 when (dragStatus) {
                     is DragStatus.Drag -> components.onDragChanged(dragStatus.coordinate)
                     is DragStatus.Finish -> components.onDragFinish(dragStatus.coordinate)
+                    is DragStatus.Click -> components.onClick(dragStatus.coordinate)
                 }
             }
             dragPool.clear()

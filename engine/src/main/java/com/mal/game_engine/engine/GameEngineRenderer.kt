@@ -81,4 +81,13 @@ internal class GameEngineRenderer(
             )
         )
     }
+
+    fun onClick(pixelCoordinate: Coordinate) {
+        gameLoop.onClick(
+            pixelCoordinate.fromPixelsToOpenGl(
+                GameState.screenWidth,
+                GameState.screenHeight
+            )
+        )
+    }
 }

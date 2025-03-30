@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.opengl.GLSurfaceView
 import android.util.AttributeSet
+import android.view.GestureDetector
 import android.view.MotionEvent
 import com.mal.game_engine.engine.coordinate.Coordinate
 import com.mal.game_engine.engine.di.DISPATCHER_IO
@@ -28,6 +29,14 @@ class GameEngineGLSurface @JvmOverloads constructor(
 
     private lateinit var gameEngineRenderer: GameEngineRenderer
 
+    private val gestureDetector =
+        GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onSingleTapUp(e: MotionEvent): Boolean {
+                gameEngineRenderer.onClick(Coordinate(e.x.toDouble(), e.y.toDouble()))
+                return true
+            }
+        })
+
     fun create(
         shapes: List<BaseShape<out Any>>,
         components: List<GameComponent>
@@ -50,6 +59,10 @@ class GameEngineGLSurface @JvmOverloads constructor(
         val action = event.actionMasked
         val pointerIndex = event.actionIndex
         val pointerId = event.getPointerId(pointerIndex)
+
+        if (gestureDetector.onTouchEvent(event)) {
+            return true
+        }
 
         when (action) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {

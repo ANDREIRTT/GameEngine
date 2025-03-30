@@ -10,4 +10,8 @@ internal sealed class DragStatus {
     class Finish(
         val coordinate: Coordinate
     ) : DragStatus()
+
+    class Click(
+        val coordinate: Coordinate
+    ) : DragStatus()
 }

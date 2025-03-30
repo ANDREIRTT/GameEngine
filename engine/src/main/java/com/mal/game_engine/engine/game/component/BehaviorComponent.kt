@@ -11,6 +11,8 @@ interface BehaviorComponent {
 
     fun onDragFinish(coordinate: Coordinate) {}
 
+    fun onClickConfirmed(coordinate: Coordinate) {}
+
     fun onStop() {}
 
     fun onStart() {}
