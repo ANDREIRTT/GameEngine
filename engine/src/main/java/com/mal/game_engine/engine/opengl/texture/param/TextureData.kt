@@ -4,5 +4,5 @@ import com.mal.game_engine.engine.opengl.texture.Texture
 
 data class TextureData(
     val texture: Texture,
-    val textureTransformation: TextureTransformation
+    val textureTransformation: TextureTransformation = TextureTransformation(0f)
 )

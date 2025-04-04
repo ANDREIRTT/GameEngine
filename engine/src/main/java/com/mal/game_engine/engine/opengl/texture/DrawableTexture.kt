@@ -83,6 +83,18 @@ class DrawableTexture(
                 GLES30.GL_TEXTURE_MAG_FILTER,
                 GLES30.GL_LINEAR
             )
+            if (textureMode == TextureMode.FIT) {
+                GLES30.glTexParameteri(
+                    GLES30.GL_TEXTURE_2D,
+                    GLES30.GL_TEXTURE_WRAP_S,
+                    GLES30.GL_CLAMP_TO_EDGE
+                )
+                GLES30.glTexParameteri(
+                    GLES30.GL_TEXTURE_2D,
+                    GLES30.GL_TEXTURE_WRAP_T,
+                    GLES30.GL_CLAMP_TO_EDGE
+                )
+            }
             GLES30.glEnable(GLES30.GL_BLEND)
             GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA, GLES30.GL_ONE_MINUS_SRC_ALPHA)
 

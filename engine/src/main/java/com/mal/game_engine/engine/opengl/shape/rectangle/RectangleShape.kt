@@ -54,17 +54,29 @@ class RectangleShape(
                 GLES30.GL_FLOAT,
                 false,
                 2 * 4,
-                data.texture.getTextureBuffer()
+                data.textureData.texture.getTextureBuffer()
             )
             GLES30.glEnableVertexAttribArray(it)
         }
-
         GLES30.glGetUniformLocation(program, "uTexture").withGL30 {
             GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
-            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, data.texture.glGenID)
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, data.textureData.texture.glGenID)
             GLES30.glUniform1i(it, 0)
         }
 
+        GLES30.glUniform1f(
+            GLES30.glGetUniformLocation(program, "uRotationAngle"),
+            Math.toRadians(
+                data.textureData.textureTransformation
+                    .rotationDegrees.toDouble()
+            ).toFloat()
+        )
+
+        GLES30.glUniform2f(
+            GLES30.glGetUniformLocation(program, "uScale"),
+            data.textureData.textureTransformation.scaleX,
+            data.textureData.textureTransformation.scaleY
+        )
 
         GLES30.glGetUniformLocation(program, "uMVPMatrix").withGL30 {
             GLES30.glUniformMatrix4fv(it, 1, false, data.vpMatrix, 0)
