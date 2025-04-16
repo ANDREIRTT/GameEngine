@@ -14,12 +14,13 @@ import com.mal.game_engine.engine.game.component.GameComponent
 import com.mal.game_engine.engine.opengl.BaseShape
 import org.koin.core.component.get
 import org.koin.core.qualifier.named
+import org.koin.java.KoinJavaComponent.getKoin
 import kotlin.math.abs
 
 class GameEngineGLSurface @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
-) : GLSurfaceView(context, attrs), IsolatedKoinComponent {
+) : GLSurfaceView(context, attrs) {
 
     private val touchPoints = mutableMapOf<Int, Coordinate>()
     private val initialTouch = mutableMapOf<Int, Pair<Coordinate, Long>>()
@@ -39,7 +40,7 @@ class GameEngineGLSurface @JvmOverloads constructor(
         gameEngineRenderer = GameEngineRenderer(
             shapes = shapes,
             gameLoop = GameLoop(
-                dispatcher = get(named(DISPATCHER_IO)),
+                dispatcher = getKoin().get(named(DISPATCHER_IO)),
                 components = components
             ) {
                 requestRender()
